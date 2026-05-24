@@ -4,13 +4,17 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
     DidOpenTextDocumentParams, Hover, HoverParams, HoverProviderCapability, InitializeParams,
-    InitializeResult, InitializedParams, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Url,
+    InitializeResult, InitializedParams, SemanticTokenModifier, SemanticTokenType,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 
 use crate::diagnostics::to_lsp_diagnostic;
 use crate::document::DocumentStore;
+use crate::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES};
 
 /// The LSP server backend.  One instance is created per client connection.
 pub struct Backend {
@@ -44,7 +48,24 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec!["@".to_string()]),
                     ..Default::default()
                 }),
-                // semantic_tokens_provider is added in Task 6
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: TOKEN_TYPES
+                                    .iter()
+                                    .map(|s| SemanticTokenType::new(s))
+                                    .collect(),
+                                token_modifiers: TOKEN_MODIFIERS
+                                    .iter()
+                                    .map(|s| SemanticTokenModifier::new(s))
+                                    .collect(),
+                            },
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..Default::default()
+                        },
+                    ),
+                ),
                 ..Default::default()
             },
             ..Default::default()
@@ -83,5 +104,17 @@ impl LanguageServer for Backend {
     ) -> Result<Option<CompletionResponse>> {
         // Filled in Task 7
         Ok(None)
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
+        let data = match self.docs.get_doc(&uri).await {
+            Some(doc) => crate::semantic_tokens::build_semantic_tokens(&doc),
+            None => vec![],
+        };
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens { result_id: None, data })))
     }
 }
