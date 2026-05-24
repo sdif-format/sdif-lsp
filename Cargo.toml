@@ -1,0 +1,14 @@
+[package]
+name = "sdif-lsp"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sdif-lsp"
+path = "src/main.rs"
+
+[dependencies]
+sdif-rs = { path = "../sdif-rs" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+lsp-types = "0.95"
