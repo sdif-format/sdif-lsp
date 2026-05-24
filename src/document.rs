@@ -52,4 +52,13 @@ impl DocumentStore {
             .get(&uri.to_string())
             .and_then(|s| s.doc.clone())
     }
+
+    /// Return the raw source text for `uri`, or `None` if not found.
+    pub async fn get_text(&self, uri: &Url) -> Option<String> {
+        self.inner
+            .read()
+            .await
+            .get(&uri.to_string())
+            .map(|s| s.text.clone())
+    }
 }
