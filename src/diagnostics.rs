@@ -1,7 +1,7 @@
 //! Convert `sdif_rs::ParseError` values into `lsp_types::Diagnostic`.
 
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 use sdif_rs::ParseError;
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
 /// Map a single `ParseError` to an LSP `Diagnostic`.
 ///

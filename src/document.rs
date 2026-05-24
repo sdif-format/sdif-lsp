@@ -21,7 +21,9 @@ pub struct DocumentStore {
 
 impl DocumentStore {
     pub fn new() -> Self {
-        DocumentStore { inner: Arc::new(RwLock::new(HashMap::new())) }
+        DocumentStore {
+            inner: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     /// Re-parse `text` and store the result under `uri`.

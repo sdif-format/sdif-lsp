@@ -32,11 +32,27 @@ pub fn completions_at(text: &str, line: u32, character: u32) -> Vec<CompletionIt
 
 fn directive_completions() -> Vec<CompletionItem> {
     vec![
-        completion_item("@sdif 1.0", "Format version directive", CompletionItemKind::KEYWORD),
-        completion_item("@sdif.ai 1.0", "AI projection format directive", CompletionItemKind::KEYWORD),
+        completion_item(
+            "@sdif 1.0",
+            "Format version directive",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "@sdif.ai 1.0",
+            "AI projection format directive",
+            CompletionItemKind::KEYWORD,
+        ),
         completion_item("@profile", "Profile directive", CompletionItemKind::KEYWORD),
-        completion_item("@namespace", "Namespace directive", CompletionItemKind::KEYWORD),
-        completion_item("@vocab", "Vocabulary directive", CompletionItemKind::KEYWORD),
+        completion_item(
+            "@namespace",
+            "Namespace directive",
+            CompletionItemKind::KEYWORD,
+        ),
+        completion_item(
+            "@vocab",
+            "Vocabulary directive",
+            CompletionItemKind::KEYWORD,
+        ),
         completion_item("@base", "Base URI directive", CompletionItemKind::KEYWORD),
     ]
 }

@@ -24,14 +24,19 @@ pub struct Backend {
 
 impl Backend {
     pub fn new(client: Client) -> Self {
-        Backend { client, docs: DocumentStore::new() }
+        Backend {
+            client,
+            docs: DocumentStore::new(),
+        }
     }
 
     /// Re-publish diagnostics for `uri` based on the current document state.
     async fn publish_diagnostics(&self, uri: &Url) {
         let errors = self.docs.get_errors(uri).await;
         let diagnostics = errors.iter().map(to_lsp_diagnostic).collect();
-        self.client.publish_diagnostics(uri.clone(), diagnostics, None).await;
+        self.client
+            .publish_diagnostics(uri.clone(), diagnostics, None)
+            .await;
     }
 }
 
@@ -111,10 +116,7 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
-    async fn completion(
-        &self,
-        params: CompletionParams,
-    ) -> Result<Option<CompletionResponse>> {
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let pos = params.text_document_position.position;
 
@@ -133,10 +135,13 @@ impl LanguageServer for Backend {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let data = match self.docs.get_doc(&uri).await {
-            Some(doc) => crate::semantic_tokens::build_semantic_tokens(&doc),
+        let data = match self.docs.get_text(&uri).await {
+            Some(text) => crate::semantic_tokens::build_semantic_tokens_from_text(&text),
             None => vec![],
         };
-        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens { result_id: None, data })))
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+            result_id: None,
+            data,
+        })))
     }
 }

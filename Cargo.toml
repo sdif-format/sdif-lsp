@@ -9,6 +9,8 @@ path = "src/main.rs"
 
 [dependencies]
 sdif-rs = { path = "../sdif-rs" }
+tree-sitter = "0.26"
+tree-sitter-sdif = { path = "../tree-sitter-sdif" }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 lsp-types = "0.95"
