@@ -321,6 +321,49 @@ fn delta_encode(tokens: Vec<RawToken>) -> Vec<SemanticToken> {
     result
 }
 
+/// Decode delta-encoded semantic tokens to absolute, readable JSON objects.
+pub fn decode_semantic_tokens(tokens: &[SemanticToken]) -> Vec<serde_json::Value> {
+    let mut decoded = Vec::new();
+    let mut line = 0;
+    let mut character = 0;
+
+    for token in tokens {
+        line += token.delta_line;
+        character = if token.delta_line == 0 {
+            character + token.delta_start
+        } else {
+            token.delta_start
+        };
+
+        let token_type = TOKEN_TYPES
+            .get(token.token_type as usize)
+            .copied()
+            .unwrap_or("unknown");
+        let token_modifiers: Vec<&str> = TOKEN_MODIFIERS
+            .iter()
+            .enumerate()
+            .filter_map(|(index, modifier)| {
+                ((token.token_modifiers_bitset & (1 << index)) != 0).then_some(*modifier)
+            })
+            .collect();
+
+        decoded.push(serde_json::json!({
+            "line": line,
+            "character": character,
+            "length": token.length,
+            "token_type": token_type,
+            "token_modifiers": token_modifiers
+        }));
+    }
+
+    decoded
+}
+
+/// Decode delta-encoded semantic tokens and serialize them as pretty JSON.
+pub fn decode_tokens_to_json(tokens: &[SemanticToken]) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&decode_semantic_tokens(tokens))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,6 +492,158 @@ mod tests {
         assert!(
             has_token(&decoded, 0, 5, 4, TT_STRING),
             "quoted value length is UTF-16"
+        );
+    }
+
+    #[test]
+    fn decoded_semantic_tokens_are_readable_json_objects() {
+        let text = "@sdif 1.0\n";
+        let tokens = build_semantic_tokens_from_text(text);
+
+        let decoded = decode_semantic_tokens(&tokens);
+
+        assert_eq!(decoded[0]["line"], 0);
+        assert_eq!(decoded[0]["character"], 0);
+        assert_eq!(decoded[0]["length"], 1);
+        assert_eq!(decoded[0]["token_type"], "operator");
+        assert_eq!(decoded[0]["token_modifiers"].as_array().unwrap().len(), 0);
+        assert_eq!(decoded[1]["token_type"], "keyword");
+    }
+
+    #[test]
+    fn test_semantic_tokens_on_fixtures() {
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        let spec_dir = env::var("SDIF_SPEC_DIR").unwrap_or_else(|_| "../sdif-spec".to_string());
+
+        let spec_path = PathBuf::from(spec_dir);
+
+        let fixture_sdif_path = spec_path.join("fixtures/editor/highlighting.sdif");
+        let fixture_ai_path = spec_path.join("fixtures/editor/highlighting.sdif.ai");
+
+        assert!(
+            fixture_sdif_path.exists(),
+            "highlighting.sdif fixture must exist at {:?}",
+            fixture_sdif_path
+        );
+        assert!(
+            fixture_ai_path.exists(),
+            "highlighting.sdif.ai fixture must exist at {:?}",
+            fixture_ai_path
+        );
+
+        // Test highlighting.sdif
+        let sdif_content = fs::read_to_string(&fixture_sdif_path).unwrap();
+        let sdif_tokens = build_semantic_tokens_from_text(&sdif_content);
+        let sdif_decoded = decode(&sdif_tokens);
+
+        // Asserts for representative tokens on highlighting.sdif
+        // Line 0: @sdif 1.0 -> "@" is operator (punctuation is TT_OPERATOR), "sdif" is TT_KEYWORD
+        assert!(
+            has_token(&sdif_decoded, 0, 0, 1, TT_OPERATOR),
+            "directive @ is operator"
+        );
+        assert!(
+            has_token(&sdif_decoded, 0, 1, 4, TT_KEYWORD),
+            "directive name is keyword"
+        );
+
+        // Line 2: "# This is a comment" -> TT_COMMENT
+        assert!(
+            has_token(&sdif_decoded, 2, 0, 19, TT_COMMENT),
+            "comment is comment"
+        );
+
+        // Line 3: "kind Dataset" -> "kind" is TT_PROPERTY, "Dataset" is TT_STRING
+        assert!(
+            has_token(&sdif_decoded, 3, 0, 4, TT_PROPERTY),
+            "kind is property"
+        );
+        assert!(
+            has_token(&sdif_decoded, 3, 5, 7, TT_STRING),
+            "Dataset value is string"
+        );
+
+        // Line 7: "items[name, value$]:" -> "items" is TT_TYPE, "name" & "value$" are columns -> TT_PROPERTY
+        assert!(
+            has_token(&sdif_decoded, 7, 0, 5, TT_TYPE),
+            "table name is type"
+        );
+        assert!(
+            has_token(&sdif_decoded, 7, 6, 4, TT_PROPERTY),
+            "column name is property"
+        );
+        assert!(
+            has_token(&sdif_decoded, 7, 12, 6, TT_PROPERTY),
+            "column value$ is property"
+        );
+
+        // Line 8: "\t\"first\"\t\"alpha\"" -> row is TT_STRING
+        assert!(
+            has_token(&sdif_decoded, 8, 0, 16, TT_STRING),
+            "table row 1 is string"
+        );
+
+        // Line 12: "notes\"\"\"" -> notes is TT_TYPE
+        assert!(
+            has_token(&sdif_decoded, 12, 0, 5, TT_TYPE),
+            "narrative key is type"
+        );
+        assert!(
+            has_token(&sdif_decoded, 12, 5, 3, TT_OPERATOR),
+            "narrative opener is operator"
+        );
+        // body starts at line 13, column 0.
+        assert!(
+            has_token(&sdif_decoded, 13, 0, 26, TT_STRING),
+            "narrative body line 1 is string"
+        );
+
+        // Test highlighting.sdif.ai
+        let ai_content = fs::read_to_string(&fixture_ai_path).unwrap();
+        let ai_tokens = build_semantic_tokens_from_text(&ai_content);
+        let ai_decoded = decode(&ai_tokens);
+
+        // Line 0: @sdif.ai 1.0 -> "@" is TT_OPERATOR, "sdif.ai" is TT_KEYWORD
+        assert!(
+            has_token(&ai_decoded, 0, 0, 1, TT_OPERATOR),
+            "sdif.ai directive @ is operator"
+        );
+        assert!(
+            has_token(&ai_decoded, 0, 1, 7, TT_KEYWORD),
+            "sdif.ai directive is keyword"
+        );
+
+        // Line 3: "alias[k=kind, st=status]" -> "alias" is TT_KEYWORD, "k=kind" & "st=status" -> alias_entry is TT_PROPERTY
+        assert!(
+            has_token(&ai_decoded, 3, 0, 5, TT_KEYWORD),
+            "alias is keyword"
+        );
+        assert!(
+            has_token(&ai_decoded, 3, 6, 6, TT_PROPERTY),
+            "alias entry k=kind is property"
+        );
+        assert!(
+            has_token(&ai_decoded, 3, 14, 9, TT_PROPERTY),
+            "alias entry st=status is property"
+        );
+
+        // Line 6: "rel[item-1]:" -> "rel" is TT_KEYWORD, "item-1" is grouped relation subject -> TT_VARIABLE
+        assert!(
+            has_token(&ai_decoded, 6, 0, 3, TT_KEYWORD),
+            "rel is keyword"
+        );
+        assert!(
+            has_token(&ai_decoded, 6, 4, 6, TT_VARIABLE),
+            "grouped relation subject is variable"
+        );
+
+        // Line 7: "\tdepends_on\titem-2" -> grouped relation row is TT_STRING
+        assert!(
+            has_token(&ai_decoded, 7, 0, 18, TT_STRING),
+            "grouped relation row 1 is string"
         );
     }
 }

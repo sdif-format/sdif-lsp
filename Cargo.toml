@@ -14,3 +14,4 @@ tree-sitter-sdif = { path = "../tree-sitter-sdif" }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 lsp-types = "0.95"
+serde_json = "1.0"
