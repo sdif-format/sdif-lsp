@@ -78,15 +78,20 @@ fn statement_hover(stmt: &Statement, line: u32, col: u32) -> Option<String> {
             }
         }
         Statement::Table(t) => {
-            if span_contains(&t.span, line, col) {
+            if !span_contains(&t.span, line, col) {
+                return None;
+            }
+            let cols = t.columns.join(", ");
+            if span_contains(&t.header_span, line, col) {
+                Some(format!("Table **{}** — columns: `{}`", t.name, cols))
+            } else {
                 Some(format!(
-                    "Table **\"{}\"** — {} columns, {} rows",
+                    "Table **{}** — {} columns, {} rows\n\nColumns: `{}`",
                     t.name,
                     t.columns.len(),
-                    t.rows.len()
+                    t.rows.len(),
+                    cols
                 ))
-            } else {
-                None
             }
         }
         Statement::Narrative(n) => {
@@ -134,9 +139,26 @@ fn object_block_hover(obj: &ObjectBlock, line: u32, col: u32) -> Option<String> 
 // ---------------------------------------------------------------------------
 
 fn format_directive(d: &Directive) -> String {
-    if d.args.is_empty() {
+    let sig = if d.args.is_empty() {
         format!("@{}", d.name)
     } else {
         format!("@{} {}", d.name, d.args.join(" "))
+    };
+    let doc = match d.name.as_str() {
+        "sdif" => "Declares SDIF source format version.",
+        "sdif.ai" => {
+            "Declares SDIF AI projection format. Enables alias headers and grouped relations."
+        }
+        "profile" => "Sets a named profile for this document.",
+        "namespace" => "Declares a namespace prefix.",
+        "vocab" => "Declares a vocabulary reference.",
+        "base" => "Sets the base URI for relative references.",
+        "include" => "Includes another SDIF file at this position.",
+        _ => "",
+    };
+    if doc.is_empty() {
+        sig
+    } else {
+        format!("{}\n\n{}", sig, doc)
     }
 }

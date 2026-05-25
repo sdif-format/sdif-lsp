@@ -46,6 +46,14 @@ pub const TOKEN_MODIFIERS: &[&str] = &[
     "modification",   // bit 7
     "documentation",  // bit 8
     "defaultLibrary", // bit 9
+    "sdifColumn0",    // bit 10
+    "sdifColumn1",    // bit 11
+    "sdifColumn2",    // bit 12
+    "sdifColumn3",    // bit 13
+    "sdifColumn4",    // bit 14
+    "sdifColumn5",    // bit 15
+    "sdifColumn6",    // bit 16
+    "sdifColumn7",    // bit 17
 ];
 
 const TT_TYPE: u32 = 1;
@@ -60,6 +68,8 @@ const TT_OPERATOR: u32 = 18;
 
 const MOD_NONE: u32 = 0;
 const MOD_DECLARATION: u32 = 1; // bit 0
+const MOD_SDIF_COLUMN_BASE: u32 = 10;
+const MOD_SDIF_COLUMN_COUNT: usize = 8;
 
 // ---------------------------------------------------------------------------
 // Internal raw token (absolute UTF-16 LSP positions, not yet delta-encoded)
@@ -141,6 +151,8 @@ pub fn build_semantic_tokens_from_text(text: &str) -> Vec<SemanticToken> {
             );
         }
     }
+
+    annotate_table_columns(&mut tokens, &line_index);
 
     normalize_tokens(tokens)
 }
@@ -225,6 +237,194 @@ fn is_trailing_tab_table_node(kind: &str) -> bool {
     matches!(kind, "row_identifier" | "table_cell_separator")
 }
 
+fn annotate_table_columns(tokens: &mut Vec<RawToken>, line_index: &LineIndex<'_>) {
+    let mut row = 0;
+    while row < line_index.line_count() {
+        let Some(line) = line_index.line(row) else {
+            break;
+        };
+        let Some(header) = parse_table_header(line) else {
+            row += 1;
+            continue;
+        };
+
+        for (column_index, start, end) in header.columns {
+            apply_column_modifier(
+                tokens,
+                line_index,
+                row,
+                start,
+                end,
+                column_index,
+                TT_PROPERTY,
+            );
+        }
+
+        row += 1;
+        while row < line_index.line_count() {
+            let Some(row_line) = line_index.line(row) else {
+                break;
+            };
+            if !row_line.contains('\t') {
+                break;
+            }
+
+            for (column_index, start, end, token_type) in parse_table_row_cells(row_line) {
+                apply_column_modifier(
+                    tokens,
+                    line_index,
+                    row,
+                    start,
+                    end,
+                    column_index,
+                    token_type,
+                );
+            }
+            row += 1;
+        }
+    }
+}
+
+struct ParsedTableHeader {
+    columns: Vec<(usize, usize, usize)>,
+}
+
+fn parse_table_header(line: &str) -> Option<ParsedTableHeader> {
+    let open = line.find('[')?;
+    let close = line.rfind("]:")?;
+    if close <= open {
+        return None;
+    }
+
+    let mut columns = Vec::new();
+    let mut start = open + 1;
+    for (column_index, part) in line[open + 1..close].split(',').enumerate() {
+        let trimmed = part.trim();
+        let leading = part.len() - part.trim_start().len();
+        let column_start = start + leading;
+        let column_name_len = trimmed.strip_suffix('$').unwrap_or(trimmed).len();
+        let column_end = column_start + column_name_len;
+        if column_end > column_start {
+            columns.push((column_index, column_start, column_end));
+        }
+        start += part.len() + 1;
+    }
+
+    Some(ParsedTableHeader { columns })
+}
+
+fn parse_table_row_cells(line: &str) -> Vec<(usize, usize, usize, u32)> {
+    let indent_len = line.len() - line.trim_start_matches(' ').len();
+    let mut cells = Vec::new();
+    let mut start = indent_len;
+
+    for (column_index, cell) in line[indent_len..].split('\t').enumerate() {
+        let cell_start = start;
+        let cell_end = cell_start + cell.len();
+        if cell_end > cell_start {
+            let token_type = if column_index == 0 {
+                TT_VARIABLE
+            } else {
+                infer_scalar_token_type(cell)
+            };
+            cells.push((column_index, cell_start, cell_end, token_type));
+        }
+        start = cell_end + 1;
+    }
+
+    cells
+}
+
+fn infer_scalar_token_type(text: &str) -> u32 {
+    if is_number_like(text) {
+        TT_NUMBER
+    } else if is_enum_like(text) {
+        TT_ENUM
+    } else {
+        TT_STRING
+    }
+}
+
+fn is_number_like(text: &str) -> bool {
+    if text.is_empty() {
+        return false;
+    }
+    let number = text.strip_prefix('-').unwrap_or(text);
+    let mut seen_digit = false;
+    let mut seen_dot = false;
+    for ch in number.chars() {
+        if ch.is_ascii_digit() {
+            seen_digit = true;
+        } else if ch == '.' && !seen_dot {
+            seen_dot = true;
+        } else {
+            return false;
+        }
+    }
+    seen_digit
+}
+
+fn is_enum_like(text: &str) -> bool {
+    matches!(
+        text,
+        "null"
+            | "true"
+            | "false"
+            | "done"
+            | "in-progress"
+            | "blocked"
+            | "available"
+            | "disabled"
+            | "heuristic"
+            | "model"
+            | "integer"
+            | "string"
+            | "boolean"
+    )
+}
+
+fn apply_column_modifier(
+    tokens: &mut Vec<RawToken>,
+    line_index: &LineIndex<'_>,
+    row: usize,
+    start_byte_col: usize,
+    end_byte_col: usize,
+    column_index: usize,
+    fallback_token_type: u32,
+) {
+    let modifier = column_modifier(column_index);
+    let Some(character) = line_index.utf16_column(row, start_byte_col) else {
+        return;
+    };
+    let Some(end_character) = line_index.utf16_column(row, end_byte_col) else {
+        return;
+    };
+    let length = end_character.saturating_sub(character);
+    if length == 0 {
+        return;
+    }
+
+    if let Some(token) = tokens.iter_mut().find(|token| {
+        token.line == row as u32 && token.character == character && token.length == length
+    }) {
+        token.modifiers |= modifier;
+        return;
+    }
+
+    tokens.push(RawToken::new(
+        row as u32,
+        character,
+        length,
+        fallback_token_type,
+        modifier,
+    ));
+}
+
+fn column_modifier(column_index: usize) -> u32 {
+    let offset = column_index.min(MOD_SDIF_COLUMN_COUNT - 1) as u32;
+    1 << (MOD_SDIF_COLUMN_BASE + offset)
+}
+
 struct LineIndex<'a> {
     lines: Vec<&'a str>,
 }
@@ -240,8 +440,19 @@ impl<'a> LineIndex<'a> {
         self.lines.get(row).copied()
     }
 
+    fn line_count(&self) -> usize {
+        self.lines.len()
+    }
+
     fn line_byte_len(&self, row: usize) -> usize {
         self.line(row).map(str::len).unwrap_or(0)
+    }
+
+    fn utf16_column(&self, row: usize, byte_col: usize) -> Option<u32> {
+        let line = self.line(row)?;
+        let byte_col = byte_col.min(line.len());
+        line.is_char_boundary(byte_col)
+            .then(|| utf16_units(&line[..byte_col]))
     }
 
     fn token_for_byte_columns(
@@ -389,6 +600,7 @@ mod tests {
         character: u32,
         length: u32,
         token_type: u32,
+        modifiers: u32,
     }
 
     fn decode(tokens: &[SemanticToken]) -> Vec<DecodedToken> {
@@ -408,10 +620,28 @@ mod tests {
                 character,
                 length: token.length,
                 token_type: token.token_type,
+                modifiers: token.token_modifiers_bitset,
             });
         }
 
         decoded
+    }
+
+    fn has_token_modifier(
+        decoded: &[DecodedToken],
+        line: u32,
+        character: u32,
+        length: u32,
+        token_type: u32,
+        modifier: u32,
+    ) -> bool {
+        decoded.iter().any(|token| {
+            token.line == line
+                && token.character == character
+                && token.length == length
+                && token.token_type == token_type
+                && (token.modifiers & modifier) != 0
+        })
     }
 
     fn has_token(
@@ -478,6 +708,35 @@ mod tests {
                 token_type
             ),
             "{message}: expected {text:?} at {line_index}:{character}"
+        );
+    }
+
+    fn assert_has_line_text_token_modifier(
+        source: &str,
+        decoded: &[DecodedToken],
+        line_index: u32,
+        text: &str,
+        token_type: u32,
+        modifier: u32,
+        message: &str,
+    ) {
+        let line = source
+            .lines()
+            .nth(line_index as usize)
+            .unwrap_or_else(|| panic!("{message}: line not found: {line_index}"));
+        let character = line
+            .find(text)
+            .unwrap_or_else(|| panic!("{message}: text not found on line {line_index}: {text:?}"));
+        assert!(
+            has_token_modifier(
+                decoded,
+                line_index,
+                character as u32,
+                text.len() as u32,
+                token_type,
+                modifier
+            ),
+            "{message}: expected {text:?} at {line_index}:{character} with modifier {modifier}"
         );
     }
 
@@ -912,6 +1171,42 @@ mod tests {
         assert_has_text_token(&content, &decoded, "status", TT_PROPERTY, "status column");
         assert_has_text_token(&content, &decoded, "type", TT_PROPERTY, "type column");
         assert_has_text_token(&content, &decoded, "notes", TT_PROPERTY, "notes column");
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            9,
+            "name",
+            TT_PROPERTY,
+            column_modifier(0),
+            "name column modifier",
+        );
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            9,
+            "status",
+            TT_PROPERTY,
+            column_modifier(1),
+            "status column modifier",
+        );
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            9,
+            "type",
+            TT_PROPERTY,
+            column_modifier(2),
+            "type column modifier",
+        );
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            9,
+            "notes",
+            TT_PROPERTY,
+            column_modifier(3),
+            "notes column modifier",
+        );
         assert_has_line_text_token(
             &content,
             &decoded,
@@ -919,6 +1214,15 @@ mod tests {
             "Estimate",
             TT_VARIABLE,
             "Estimate row id",
+        );
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            10,
+            "Estimate",
+            TT_VARIABLE,
+            column_modifier(0),
+            "Estimate row id column modifier",
         );
         assert_has_line_text_token(
             &content,
@@ -944,6 +1248,15 @@ mod tests {
             TT_ENUM,
             "available enum",
         );
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            10,
+            "available",
+            TT_ENUM,
+            column_modifier(1),
+            "available status column modifier",
+        );
         assert_has_line_text_token(&content, &decoded, 13, "disabled", TT_ENUM, "disabled enum");
         assert_has_line_text_token(
             &content,
@@ -953,8 +1266,26 @@ mod tests {
             TT_ENUM,
             "heuristic enum",
         );
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            10,
+            "heuristic",
+            TT_ENUM,
+            column_modifier(2),
+            "heuristic type column modifier",
+        );
         assert_has_line_text_token(&content, &decoded, 12, "model", TT_ENUM, "model enum");
         assert_has_line_text_token(&content, &decoded, 15, "1.54", TT_NUMBER, "ranking number");
+        assert_has_line_text_token_modifier(
+            &content,
+            &decoded,
+            15,
+            "1.54",
+            TT_NUMBER,
+            column_modifier(1),
+            "ranking avgRank column modifier",
+        );
         assert_has_line_text_token(&content, &decoded, 15, "57.88", TT_NUMBER, "ranking ratio");
     }
 }
