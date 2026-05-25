@@ -607,6 +607,8 @@ mod tests {
 
         // Test highlighting.sdif
         let sdif_content = fs::read_to_string(&fixture_sdif_path).unwrap();
+        sdif_rs::parser::parse_text(&sdif_content)
+            .expect("highlighting.sdif must parse without diagnostics");
         let sdif_tokens = build_semantic_tokens_from_text(&sdif_content);
         let sdif_decoded = decode(&sdif_tokens);
 
@@ -651,13 +653,13 @@ mod tests {
             "column value is property"
         );
 
-        // Line 8: "\t\"first\"\t\"alpha\"" -> first cell is variable, value cell is string
+        // Line 8: "  \"first\"\t\"alpha\"" -> first cell is variable, value cell is string
         assert!(
-            has_token(&sdif_decoded, 8, 1, 7, TT_VARIABLE),
+            has_token(&sdif_decoded, 8, 2, 7, TT_VARIABLE),
             "table row identifier is variable"
         );
         assert!(
-            has_token(&sdif_decoded, 8, 9, 7, TT_STRING),
+            has_token(&sdif_decoded, 8, 10, 7, TT_STRING),
             "table row value is string"
         );
 
@@ -678,6 +680,8 @@ mod tests {
 
         // Test highlighting.sdif.ai
         let ai_content = fs::read_to_string(&fixture_ai_path).unwrap();
+        sdif_rs::parser::parse_text(&ai_content)
+            .expect("highlighting.sdif.ai must parse without diagnostics");
         let ai_tokens = build_semantic_tokens_from_text(&ai_content);
         let ai_decoded = decode(&ai_tokens);
 
@@ -715,9 +719,9 @@ mod tests {
             "grouped relation subject is variable"
         );
 
-        // Line 7: "\tdepends_on\titem-2" -> grouped relation row is TT_STRING
+        // Line 7: "  depends_on item-2" -> grouped relation row is TT_STRING
         assert!(
-            has_token(&ai_decoded, 7, 0, 18, TT_STRING),
+            has_token(&ai_decoded, 7, 0, 19, TT_STRING),
             "grouped relation row 1 is string"
         );
     }
@@ -738,6 +742,8 @@ mod tests {
         );
 
         let content = fs::read_to_string(&fixture_path).unwrap();
+        sdif_rs::parser::parse_text(&content)
+            .expect("benchmark-report.sdif must parse without diagnostics");
         let decoded = decode(&build_semantic_tokens_from_text(&content));
 
         assert_has_text_token(&content, &decoded, "@", TT_OPERATOR, "@sdif marker");
