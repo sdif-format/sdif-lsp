@@ -12,6 +12,7 @@ mod completion;
 mod diagnostics;
 mod document;
 mod hover;
+mod position;
 mod semantic_tokens;
 
 use backend::Backend;

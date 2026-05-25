@@ -12,6 +12,7 @@ pub struct DocState {
     pub text: String,
     pub doc: Option<Document>,
     pub errors: Vec<ParseError>,
+    pub version: Option<i32>,
 }
 
 /// Thread-safe store for all open documents.
@@ -32,7 +33,12 @@ impl DocumentStore {
             Ok(d) => (Some(d), vec![]),
             Err(e) => (None, vec![e]),
         };
-        let state = DocState { text, doc, errors };
+        let state = DocState {
+            text,
+            doc,
+            errors,
+            version: None,
+        };
         self.inner.write().await.insert(uri.to_string(), state);
     }
 
@@ -62,5 +68,10 @@ impl DocumentStore {
             .await
             .get(&uri.to_string())
             .map(|s| s.text.clone())
+    }
+
+    /// Remove the document for `uri` from the store.
+    pub async fn remove(&self, uri: &Url) {
+        self.inner.write().await.remove(&uri.to_string());
     }
 }

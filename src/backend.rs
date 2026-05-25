@@ -3,12 +3,12 @@
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
-    DidOpenTextDocumentParams, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, MarkupContent, MarkupKind,
-    SemanticTokenModifier, SemanticTokenType, SemanticTokens, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Url,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, MarkupContent,
+    MarkupKind, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -32,8 +32,9 @@ impl Backend {
 
     /// Re-publish diagnostics for `uri` based on the current document state.
     async fn publish_diagnostics(&self, uri: &Url) {
+        let text = self.docs.get_text(uri).await.unwrap_or_default();
         let errors = self.docs.get_errors(uri).await;
-        let diagnostics = errors.iter().map(to_lsp_diagnostic).collect();
+        let diagnostics = errors.iter().map(|e| to_lsp_diagnostic(&text, e)).collect();
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, None)
             .await;
@@ -43,59 +44,44 @@ impl Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
+        eprintln!("[sdif-lsp] initialize");
         Ok(InitializeResult {
-            capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
-                )),
-                hover_provider: Some(HoverProviderCapability::Simple(true)),
-                completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec!["@".to_string()]),
-                    ..Default::default()
-                }),
-                semantic_tokens_provider: Some(
-                    SemanticTokensServerCapabilities::SemanticTokensOptions(
-                        SemanticTokensOptions {
-                            legend: SemanticTokensLegend {
-                                token_types: TOKEN_TYPES
-                                    .iter()
-                                    .map(|s| SemanticTokenType::new(s))
-                                    .collect(),
-                                token_modifiers: TOKEN_MODIFIERS
-                                    .iter()
-                                    .map(|s| SemanticTokenModifier::new(s))
-                                    .collect(),
-                            },
-                            full: Some(SemanticTokensFullOptions::Bool(true)),
-                            ..Default::default()
-                        },
-                    ),
-                ),
-                ..Default::default()
-            },
+            capabilities: server_capabilities(),
             ..Default::default()
         })
     }
 
-    async fn initialized(&self, _params: InitializedParams) {}
+    async fn initialized(&self, _params: InitializedParams) {
+        eprintln!("[sdif-lsp] ready");
+    }
 
     async fn shutdown(&self) -> Result<()> {
+        eprintln!("[sdif-lsp] shutdown");
         Ok(())
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
+        eprintln!("[sdif-lsp] did_open {uri}");
         self.docs.update(&uri, text).await;
         self.publish_diagnostics(&uri).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
+        eprintln!("[sdif-lsp] did_change {uri}");
         if let Some(change) = params.content_changes.into_iter().last() {
             self.docs.update(&uri, change.text).await;
             self.publish_diagnostics(&uri).await;
         }
+    }
+
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        let uri = params.text_document.uri;
+        eprintln!("[sdif-lsp] did_close {uri}");
+        self.docs.remove(&uri).await;
+        self.client.publish_diagnostics(uri, vec![], None).await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -143,5 +129,33 @@ impl LanguageServer for Backend {
             result_id: None,
             data,
         })))
+    }
+}
+
+fn server_capabilities() -> ServerCapabilities {
+    ServerCapabilities {
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
+        completion_provider: Some(CompletionOptions {
+            trigger_characters: Some(vec!["@".to_string()]),
+            ..Default::default()
+        }),
+        semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
+            SemanticTokensOptions {
+                legend: SemanticTokensLegend {
+                    token_types: TOKEN_TYPES
+                        .iter()
+                        .map(|s| SemanticTokenType::new(s))
+                        .collect(),
+                    token_modifiers: TOKEN_MODIFIERS
+                        .iter()
+                        .map(|s| SemanticTokenModifier::new(s))
+                        .collect(),
+                },
+                full: Some(SemanticTokensFullOptions::Bool(true)),
+                ..Default::default()
+            },
+        )),
+        ..Default::default()
     }
 }

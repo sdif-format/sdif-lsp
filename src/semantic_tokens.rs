@@ -152,7 +152,7 @@ pub fn build_semantic_tokens_from_text(text: &str) -> Vec<SemanticToken> {
         }
     }
 
-    annotate_table_columns(&mut tokens, &line_index);
+    enrich_table_column_tokens(&mut tokens, &line_index);
 
     normalize_tokens(tokens)
 }
@@ -237,7 +237,7 @@ fn is_trailing_tab_table_node(kind: &str) -> bool {
     matches!(kind, "row_identifier" | "table_cell_separator")
 }
 
-fn annotate_table_columns(tokens: &mut Vec<RawToken>, line_index: &LineIndex<'_>) {
+fn enrich_table_column_tokens(tokens: &mut Vec<RawToken>, line_index: &LineIndex<'_>) {
     let mut row = 0;
     while row < line_index.line_count() {
         let Some(line) = line_index.line(row) else {
@@ -361,26 +361,12 @@ fn is_number_like(text: &str) -> bool {
             return false;
         }
     }
-    seen_digit
+    // Reject trailing-dot numbers like "1." — tree-sitter requires digits after decimal.
+    seen_digit && !number.ends_with('.')
 }
 
 fn is_enum_like(text: &str) -> bool {
-    matches!(
-        text,
-        "null"
-            | "true"
-            | "false"
-            | "done"
-            | "in-progress"
-            | "blocked"
-            | "available"
-            | "disabled"
-            | "heuristic"
-            | "model"
-            | "integer"
-            | "string"
-            | "boolean"
-    )
+    matches!(text, "null" | "true" | "false")
 }
 
 fn apply_column_modifier(

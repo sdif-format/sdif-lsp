@@ -10,9 +10,7 @@ use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat}
 /// `text` is the full document text; `line` and `character` are the LSP
 /// cursor position.
 pub fn completions_at(text: &str, line: u32, character: u32) -> Vec<CompletionItem> {
-    let line_text = text.lines().nth(line as usize).unwrap_or("");
-    let char_limit = (character as usize).min(line_text.len());
-    let before_cursor = &line_text[..char_limit];
+    let before_cursor = crate::position::text_before_lsp_cursor(text, line, character);
 
     if before_cursor.trim_start().starts_with('@') {
         return directive_completions();
