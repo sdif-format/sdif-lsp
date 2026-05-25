@@ -727,6 +727,126 @@ mod tests {
     }
 
     #[test]
+    fn test_semantic_tokens_on_assistant_reference_fixtures() {
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        let spec_dir = env::var("SDIF_SPEC_DIR").unwrap_or_else(|_| "../sdif-spec".to_string());
+        let spec_path = PathBuf::from(spec_dir);
+        let source_path = spec_path.join("fixtures/editor/assistant-reference.sdif");
+        let ai_path = spec_path.join("fixtures/editor/assistant-reference.sdif.ai");
+
+        assert!(
+            source_path.exists(),
+            "assistant-reference.sdif fixture must exist at {:?}",
+            source_path
+        );
+        assert!(
+            ai_path.exists(),
+            "assistant-reference.sdif.ai fixture must exist at {:?}",
+            ai_path
+        );
+
+        let source = fs::read_to_string(&source_path).unwrap();
+        sdif_rs::parser::parse_text(&source)
+            .expect("assistant-reference.sdif must parse without diagnostics");
+        let source_tokens = decode(&build_semantic_tokens_from_text(&source));
+
+        assert_has_text_token(
+            &source,
+            &source_tokens,
+            "sdif",
+            TT_KEYWORD,
+            "source directive",
+        );
+        assert_has_text_token(&source, &source_tokens, "kind", TT_PROPERTY, "kind field");
+        assert_has_text_token(&source, &source_tokens, "milestones", TT_TYPE, "plan table");
+        assert_has_text_token(
+            &source,
+            &source_tokens,
+            "packagesSchema",
+            TT_TYPE,
+            "schema table",
+        );
+        assert_has_line_text_token(&source, &source_tokens, 6, "1", TT_VARIABLE, "milestone id");
+        assert_has_line_text_token(
+            &source,
+            &source_tokens,
+            6,
+            "done",
+            TT_ENUM,
+            "milestone status",
+        );
+        assert_has_line_text_token(
+            &source,
+            &source_tokens,
+            14,
+            "integer",
+            TT_ENUM,
+            "schema type value",
+        );
+        assert_has_line_text_token(
+            &source,
+            &source_tokens,
+            14,
+            "true",
+            TT_ENUM,
+            "schema required flag",
+        );
+        assert_has_line_text_token(
+            &source,
+            &source_tokens,
+            19,
+            "24",
+            TT_NUMBER,
+            "benchmark corpus count",
+        );
+        assert_has_text_token(&source, &source_tokens, "rules", TT_KEYWORD, "rules block");
+
+        let ai = fs::read_to_string(&ai_path).unwrap();
+        sdif_rs::parser::parse_text(&ai)
+            .expect("assistant-reference.sdif.ai must parse without diagnostics");
+        let ai_tokens = decode(&build_semantic_tokens_from_text(&ai));
+
+        assert_has_text_token(&ai, &ai_tokens, "sdif.ai", TT_KEYWORD, "ai directive");
+        assert_has_text_token(
+            &ai,
+            &ai_tokens,
+            "sourceHash",
+            TT_PROPERTY,
+            "source hash field",
+        );
+        assert_has_text_token(
+            &ai,
+            &ai_tokens,
+            "sha256:0123456789abcdef",
+            TT_STRING,
+            "source hash value",
+        );
+        assert_has_text_token(&ai, &ai_tokens, "lossless", TT_PROPERTY, "lossless field");
+        assert_has_text_token(&ai, &ai_tokens, "true", TT_ENUM, "lossless boolean");
+        assert_has_text_token(&ai, &ai_tokens, "alias", TT_KEYWORD, "alias keyword");
+        assert_has_text_token(&ai, &ai_tokens, "tasks", TT_TYPE, "ai table");
+        assert_has_line_text_token(&ai, &ai_tokens, 6, "T1", TT_VARIABLE, "ai row id");
+        assert_has_line_text_token(&ai, &ai_tokens, 6, "done", TT_ENUM, "ai status enum");
+        assert_has_text_token(
+            &ai,
+            &ai_tokens,
+            "rel",
+            TT_KEYWORD,
+            "grouped relation keyword",
+        );
+        assert_has_text_token(
+            &ai,
+            &ai_tokens,
+            "tasks#1",
+            TT_VARIABLE,
+            "grouped relation subject",
+        );
+    }
+
+    #[test]
     fn test_semantic_tokens_on_benchmark_report_fixture() {
         use std::env;
         use std::fs;
