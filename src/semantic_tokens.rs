@@ -557,7 +557,7 @@ mod tests {
         let decoded = decode(&build_semantic_tokens_from_text(text));
 
         assert!(
-            has_token(&decoded, 0, 0, 4, TT_PROPERTY),
+            has_token(&decoded, 0, 0, 4, TT_KEYWORD),
             "identifier length is UTF-16"
         );
         assert!(
@@ -629,10 +629,10 @@ mod tests {
             "comment is comment"
         );
 
-        // Line 3: "kind Dataset" -> "kind" is TT_PROPERTY, "Dataset" is TT_STRING
+        // Line 3: "kind Dataset" -> "kind" is TT_KEYWORD, "Dataset" is TT_STRING
         assert!(
-            has_token(&sdif_decoded, 3, 0, 4, TT_PROPERTY),
-            "kind is property"
+            has_token(&sdif_decoded, 3, 0, 4, TT_KEYWORD),
+            "kind is keyword"
         );
         assert!(
             has_token(&sdif_decoded, 3, 5, 7, TT_STRING),
@@ -760,7 +760,7 @@ mod tests {
             TT_KEYWORD,
             "source directive",
         );
-        assert_has_text_token(&source, &source_tokens, "kind", TT_PROPERTY, "kind field");
+        assert_has_text_token(&source, &source_tokens, "kind", TT_KEYWORD, "kind field");
         assert_has_text_token(&source, &source_tokens, "milestones", TT_TYPE, "plan table");
         assert_has_text_token(
             &source,
@@ -814,7 +814,7 @@ mod tests {
             &ai,
             &ai_tokens,
             "sourceHash",
-            TT_PROPERTY,
+            TT_KEYWORD,
             "source hash field",
         );
         assert_has_text_token(
@@ -824,7 +824,7 @@ mod tests {
             TT_STRING,
             "source hash value",
         );
-        assert_has_text_token(&ai, &ai_tokens, "lossless", TT_PROPERTY, "lossless field");
+        assert_has_text_token(&ai, &ai_tokens, "lossless", TT_KEYWORD, "lossless field");
         assert_has_text_token(&ai, &ai_tokens, "true", TT_ENUM, "lossless boolean");
         assert_has_text_token(&ai, &ai_tokens, "alias", TT_KEYWORD, "alias keyword");
         assert_has_text_token(&ai, &ai_tokens, "tasks", TT_TYPE, "ai table");
@@ -868,6 +868,8 @@ mod tests {
 
         assert_has_text_token(&content, &decoded, "@", TT_OPERATOR, "@sdif marker");
         assert_has_text_token(&content, &decoded, "sdif", TT_KEYWORD, "@sdif directive");
+        assert_has_text_token(&content, &decoded, "kind", TT_KEYWORD, "kind key");
+        assert_has_text_token(&content, &decoded, "version", TT_KEYWORD, "version key");
         assert_has_text_token(
             &content,
             &decoded,
