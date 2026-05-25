@@ -1,7 +1,7 @@
 //! Integration tests for SDIF diagnostics conversion.
 
 use sdif_lsp::diagnostics::to_lsp_diagnostic;
-use sdif_rs::parser::parse_text;
+use sdif::parser::parse_text;
 
 #[test]
 fn diagnostic_range_is_zero_based() {

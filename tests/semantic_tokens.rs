@@ -58,7 +58,7 @@ fn build_semantic_tokens_from_highlighting_fixture() {
     assert!(path.exists(), "fixture must exist: {path:?}");
 
     let content = std::fs::read_to_string(&path).unwrap();
-    sdif_rs::parser::parse_text(&content).expect("highlighting.sdif must parse cleanly");
+    sdif::parser::parse_text(&content).expect("highlighting.sdif must parse cleanly");
 
     let tokens = build_semantic_tokens_from_text(&content);
     assert!(!tokens.is_empty(), "must produce tokens");
@@ -82,7 +82,7 @@ fn build_semantic_tokens_from_highlighting_ai_fixture() {
     assert!(path.exists(), "fixture must exist: {path:?}");
 
     let content = std::fs::read_to_string(&path).unwrap();
-    sdif_rs::parser::parse_text(&content).expect("highlighting.sdif.ai must parse cleanly");
+    sdif::parser::parse_text(&content).expect("highlighting.sdif.ai must parse cleanly");
 
     let tokens = build_semantic_tokens_from_text(&content);
     assert!(!tokens.is_empty(), "must produce tokens");

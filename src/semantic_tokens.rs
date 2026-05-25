@@ -852,7 +852,7 @@ mod tests {
 
         // Test highlighting.sdif
         let sdif_content = fs::read_to_string(&fixture_sdif_path).unwrap();
-        sdif_rs::parser::parse_text(&sdif_content)
+        sdif::parser::parse_text(&sdif_content)
             .expect("highlighting.sdif must parse without diagnostics");
         let sdif_tokens = build_semantic_tokens_from_text(&sdif_content);
         let sdif_decoded = decode(&sdif_tokens);
@@ -925,7 +925,7 @@ mod tests {
 
         // Test highlighting.sdif.ai
         let ai_content = fs::read_to_string(&fixture_ai_path).unwrap();
-        sdif_rs::parser::parse_text(&ai_content)
+        sdif::parser::parse_text(&ai_content)
             .expect("highlighting.sdif.ai must parse without diagnostics");
         let ai_tokens = build_semantic_tokens_from_text(&ai_content);
         let ai_decoded = decode(&ai_tokens);
@@ -994,7 +994,7 @@ mod tests {
         );
 
         let source = fs::read_to_string(&source_path).unwrap();
-        sdif_rs::parser::parse_text(&source)
+        sdif::parser::parse_text(&source)
             .expect("assistant-reference.sdif must parse without diagnostics");
         let source_tokens = decode(&build_semantic_tokens_from_text(&source));
 
@@ -1050,7 +1050,7 @@ mod tests {
         assert_has_text_token(&source, &source_tokens, "rules", TT_KEYWORD, "rules block");
 
         let ai = fs::read_to_string(&ai_path).unwrap();
-        sdif_rs::parser::parse_text(&ai)
+        sdif::parser::parse_text(&ai)
             .expect("assistant-reference.sdif.ai must parse without diagnostics");
         let ai_tokens = decode(&build_semantic_tokens_from_text(&ai));
 
@@ -1107,7 +1107,7 @@ mod tests {
         );
 
         let content = fs::read_to_string(&fixture_path).unwrap();
-        sdif_rs::parser::parse_text(&content)
+        sdif::parser::parse_text(&content)
             .expect("benchmark-report.sdif must parse without diagnostics");
         let decoded = decode(&build_semantic_tokens_from_text(&content));
 

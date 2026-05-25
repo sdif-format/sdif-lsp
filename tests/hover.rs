@@ -1,9 +1,9 @@
 //! Integration tests for SDIF hover information.
 
 use sdif_lsp::hover::hover_at;
-use sdif_rs::parser::parse_text;
+use sdif::parser::parse_text;
 
-fn doc(text: &str) -> sdif_rs::Document {
+fn doc(text: &str) -> sdif::Document {
     parse_text(text).expect("test input must parse")
 }
 
