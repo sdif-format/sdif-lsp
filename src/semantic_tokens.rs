@@ -55,6 +55,7 @@ const TT_PROPERTY: u32 = 11;
 const TT_KEYWORD: u32 = 12;
 const TT_COMMENT: u32 = 14;
 const TT_STRING: u32 = 15;
+const TT_NUMBER: u32 = 16;
 const TT_OPERATOR: u32 = 18;
 
 const MOD_NONE: u32 = 0;
@@ -158,6 +159,7 @@ fn map_capture(capture_name: &str) -> Option<(u32, u32)> {
         "constant" => Some((TT_ENUM, MOD_NONE)),
         "comment" => Some((TT_COMMENT, MOD_NONE)),
         "string" => Some((TT_STRING, MOD_NONE)),
+        "number" => Some((TT_NUMBER, MOD_NONE)),
         "atom" => Some((TT_STRING, MOD_NONE)),
         "punctuation" => Some((TT_OPERATOR, MOD_NONE)),
         _ => None,
@@ -176,7 +178,16 @@ fn push_node_tokens(
     modifiers: u32,
 ) {
     let start = node.start_position();
-    let end = node.end_position();
+    let mut end = node.end_position();
+    if is_trailing_tab_table_node(node.kind()) && start.row == end.row && end.column > start.column
+    {
+        if line_index
+            .line(start.row)
+            .is_some_and(|line| line.as_bytes().get(end.column - 1) == Some(&b'\t'))
+        {
+            end.column -= 1;
+        }
+    }
 
     if start.row == end.row {
         if let Some(token) = line_index.token_for_byte_columns(
@@ -208,6 +219,10 @@ fn push_node_tokens(
             tokens.push(token);
         }
     }
+}
+
+fn is_trailing_tab_table_node(kind: &str) -> bool {
+    matches!(kind, "row_identifier" | "table_cell_separator")
 }
 
 struct LineIndex<'a> {
@@ -414,6 +429,58 @@ mod tests {
         })
     }
 
+    fn assert_has_text_token(
+        source: &str,
+        decoded: &[DecodedToken],
+        text: &str,
+        token_type: u32,
+        message: &str,
+    ) {
+        for (line_index, line) in source.lines().enumerate() {
+            if let Some(character) = line.find(text) {
+                assert!(
+                    has_token(
+                        decoded,
+                        line_index as u32,
+                        character as u32,
+                        text.len() as u32,
+                        token_type
+                    ),
+                    "{message}: expected {text:?} at {line_index}:{character}"
+                );
+                return;
+            }
+        }
+        panic!("{message}: text not found: {text:?}");
+    }
+
+    fn assert_has_line_text_token(
+        source: &str,
+        decoded: &[DecodedToken],
+        line_index: u32,
+        text: &str,
+        token_type: u32,
+        message: &str,
+    ) {
+        let line = source
+            .lines()
+            .nth(line_index as usize)
+            .unwrap_or_else(|| panic!("{message}: line not found: {line_index}"));
+        let character = line
+            .find(text)
+            .unwrap_or_else(|| panic!("{message}: text not found on line {line_index}: {text:?}"));
+        assert!(
+            has_token(
+                decoded,
+                line_index,
+                character as u32,
+                text.len() as u32,
+                token_type
+            ),
+            "{message}: expected {text:?} at {line_index}:{character}"
+        );
+    }
+
     #[test]
     fn semantic_tokens_follow_tree_sitter_highlights_query_for_core_sdif() {
         let text = "@sdif 1.0\n# hello\nkind Example\nitems[name,value$]:\nalpha\t\"one\"\nnotes\"\"\"body\"\"\"\n";
@@ -434,8 +501,12 @@ mod tests {
             "table column is property"
         );
         assert!(
-            has_token(&decoded, 4, 0, 11, TT_STRING),
-            "table row is string"
+            has_token(&decoded, 4, 0, 5, TT_VARIABLE),
+            "table row identifier is variable"
+        );
+        assert!(
+            has_token(&decoded, 4, 6, 5, TT_STRING),
+            "table row cell is string"
         );
         assert!(
             has_token(&decoded, 5, 0, 5, TT_TYPE),
@@ -576,14 +647,18 @@ mod tests {
             "column name is property"
         );
         assert!(
-            has_token(&sdif_decoded, 7, 12, 6, TT_PROPERTY),
-            "column value$ is property"
+            has_token(&sdif_decoded, 7, 12, 5, TT_PROPERTY),
+            "column value is property"
         );
 
-        // Line 8: "\t\"first\"\t\"alpha\"" -> row is TT_STRING
+        // Line 8: "\t\"first\"\t\"alpha\"" -> first cell is variable, value cell is string
         assert!(
-            has_token(&sdif_decoded, 8, 0, 16, TT_STRING),
-            "table row 1 is string"
+            has_token(&sdif_decoded, 8, 1, 7, TT_VARIABLE),
+            "table row identifier is variable"
+        );
+        assert!(
+            has_token(&sdif_decoded, 8, 9, 7, TT_STRING),
+            "table row value is string"
         );
 
         // Line 12: "notes\"\"\"" -> notes is TT_TYPE
@@ -645,5 +720,113 @@ mod tests {
             has_token(&ai_decoded, 7, 0, 18, TT_STRING),
             "grouped relation row 1 is string"
         );
+    }
+
+    #[test]
+    fn test_semantic_tokens_on_benchmark_report_fixture() {
+        use std::env;
+        use std::fs;
+        use std::path::PathBuf;
+
+        let spec_dir = env::var("SDIF_SPEC_DIR").unwrap_or_else(|_| "../sdif-spec".to_string());
+        let fixture_path = PathBuf::from(spec_dir).join("fixtures/editor/benchmark-report.sdif");
+
+        assert!(
+            fixture_path.exists(),
+            "benchmark-report.sdif fixture must exist at {:?}",
+            fixture_path
+        );
+
+        let content = fs::read_to_string(&fixture_path).unwrap();
+        let decoded = decode(&build_semantic_tokens_from_text(&content));
+
+        assert_has_text_token(&content, &decoded, "@", TT_OPERATOR, "@sdif marker");
+        assert_has_text_token(&content, &decoded, "sdif", TT_KEYWORD, "@sdif directive");
+        assert_has_text_token(
+            &content,
+            &decoded,
+            "generatedAt",
+            TT_PROPERTY,
+            "generatedAt key",
+        );
+        assert_has_text_token(
+            &content,
+            &decoded,
+            "2026-05-24T20:35:02Z",
+            TT_STRING,
+            "ISO timestamp value",
+        );
+        assert_has_text_token(
+            &content,
+            &decoded,
+            "envFileLoaded",
+            TT_PROPERTY,
+            "envFileLoaded key",
+        );
+        assert_has_text_token(&content, &decoded, "true", TT_ENUM, "boolean value");
+        assert_has_text_token(
+            &content,
+            &decoded,
+            "documentsCompared",
+            TT_PROPERTY,
+            "documentsCompared key",
+        );
+        assert_has_line_text_token(
+            &content,
+            &decoded,
+            7,
+            "24",
+            TT_NUMBER,
+            "numeric scalar value",
+        );
+        assert_has_text_token(&content, &decoded, "tokenizers", TT_TYPE, "table name");
+        assert_has_text_token(&content, &decoded, "name", TT_PROPERTY, "name column");
+        assert_has_text_token(&content, &decoded, "status", TT_PROPERTY, "status column");
+        assert_has_text_token(&content, &decoded, "type", TT_PROPERTY, "type column");
+        assert_has_text_token(&content, &decoded, "notes", TT_PROPERTY, "notes column");
+        assert_has_line_text_token(
+            &content,
+            &decoded,
+            10,
+            "Estimate",
+            TT_VARIABLE,
+            "Estimate row id",
+        );
+        assert_has_line_text_token(
+            &content,
+            &decoded,
+            11,
+            "TokenX",
+            TT_VARIABLE,
+            "TokenX row id",
+        );
+        assert_has_line_text_token(
+            &content,
+            &decoded,
+            12,
+            "tiktoken",
+            TT_VARIABLE,
+            "tiktoken row id",
+        );
+        assert_has_line_text_token(
+            &content,
+            &decoded,
+            10,
+            "available",
+            TT_ENUM,
+            "available enum",
+        );
+        assert_has_line_text_token(&content, &decoded, 13, "disabled", TT_ENUM, "disabled enum");
+        assert_has_line_text_token(
+            &content,
+            &decoded,
+            10,
+            "heuristic",
+            TT_ENUM,
+            "heuristic enum",
+        );
+        assert_has_line_text_token(&content, &decoded, 12, "model", TT_ENUM, "model enum");
+        assert_has_line_text_token(&content, &decoded, 15, "1.54", TT_NUMBER, "ranking number");
+        assert_has_line_text_token(&content, &decoded, 15, "57.88", TT_NUMBER, "ranking ratio");
     }
 }
