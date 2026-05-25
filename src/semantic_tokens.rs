@@ -874,7 +874,7 @@ mod tests {
             &content,
             &decoded,
             "generatedAt",
-            TT_PROPERTY,
+            TT_KEYWORD,
             "generatedAt key",
         );
         assert_has_text_token(
@@ -888,7 +888,7 @@ mod tests {
             &content,
             &decoded,
             "envFileLoaded",
-            TT_PROPERTY,
+            TT_KEYWORD,
             "envFileLoaded key",
         );
         assert_has_text_token(&content, &decoded, "true", TT_ENUM, "boolean value");
@@ -896,7 +896,7 @@ mod tests {
             &content,
             &decoded,
             "documentsCompared",
-            TT_PROPERTY,
+            TT_KEYWORD,
             "documentsCompared key",
         );
         assert_has_line_text_token(
