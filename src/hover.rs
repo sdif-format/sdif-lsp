@@ -3,7 +3,7 @@
 //! Finds the innermost AST node whose span contains the cursor position and
 //! formats a Markdown description of that node.
 
-use sdif_rs::{Directive, Document, ObjectBlock, Span, Statement};
+use sdif::{Directive, Document, ObjectBlock, Span, Statement};
 
 /// Return a Markdown hover string for the AST node at `(line, character)`.
 ///

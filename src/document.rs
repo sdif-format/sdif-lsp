@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use lsp_types::Url;
-use sdif_rs::{Document, ParseError};
+use sdif::{Document, ParseError};
 use tokio::sync::RwLock;
 
 /// Per-document state kept in memory while the editor has the file open.
@@ -29,7 +29,7 @@ impl DocumentStore {
 
     /// Re-parse `text` and store the result under `uri`.
     pub async fn update(&self, uri: &Url, text: String) {
-        let (doc, errors) = match sdif_rs::parser::parse_text(&text) {
+        let (doc, errors) = match sdif::parser::parse_text(&text) {
             Ok(d) => (Some(d), vec![]),
             Err(e) => (None, vec![e]),
         };

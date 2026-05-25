@@ -1,6 +1,6 @@
-//! Convert `sdif_rs::ParseError` values into `lsp_types::Diagnostic`.
+//! Convert `sdif::ParseError` values into `lsp_types::Diagnostic`.
 
-use sdif_rs::ParseError;
+use sdif::ParseError;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
 use crate::position::sdif_span_col_to_lsp_character;
