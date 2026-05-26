@@ -88,8 +88,9 @@ impl LanguageServer for Backend {
         let uri = params.text_document_position_params.text_document.uri;
         let pos = params.text_document_position_params.position;
 
+        let text = self.docs.get_text(&uri).await.unwrap_or_default();
         if let Some(doc) = self.docs.get_doc(&uri).await {
-            if let Some(content) = crate::hover::hover_at(&doc, pos.line, pos.character) {
+            if let Some(content) = crate::hover::hover_at(&text, &doc, pos.line, pos.character) {
                 return Ok(Some(Hover {
                     contents: HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,
