@@ -34,14 +34,6 @@ pub fn sdif_span_col_to_lsp_character(text: &str, line: u32, byte_col_1based: u3
     line_str[..byte_col].encode_utf16().count() as u32
 }
 
-/// Return the text on `line` (0-based). Handles both `\n` and `\r\n`.
-pub fn line_text(text: &str, line: u32) -> &str {
-    text.split('\n')
-        .nth(line as usize)
-        .unwrap_or("")
-        .trim_end_matches('\r')
-}
-
 /// Slice `s` to include only the bytes before UTF-16 column `character`.
 ///
 /// If `character` falls inside a surrogate pair (SMP character), the slice
