@@ -12,6 +12,7 @@ pub struct DocState {
     pub text: String,
     pub doc: Option<Document>,
     pub errors: Vec<ParseError>,
+    #[allow(dead_code)]
     pub version: Option<i32>,
 }
 
